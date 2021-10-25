@@ -1,10 +1,18 @@
 solution "VulkanDemo"
     language "C++"
     location "../build"
+    libdirs {
+        "../deps/vulkan/Lib"
+    }
+
+    links {
+        "vulkan-1"
+    }
 
     configurations {
         "Debug",
         "Release",
+        "Shipping"
     }
 
     platforms { 
@@ -13,13 +21,30 @@ solution "VulkanDemo"
     }
 
     configuration "Debug"
-        defines "DEBUG"
+        defines {
+            "DEBUG",
+            "VERBOSE",
+        }
+
         flags { 
             "Symbols"
         }
 
     configuration "Release"
-        defines "RELEASE"
+        defines { 
+            "RELEASE",
+            "VERBOSE"
+        }
+
+        buildoptions { 
+            "-O3"
+        }
+
+    configuration "Shipping"
+        defines { 
+            "SHIPPING",
+        }
+
         buildoptions { 
             "-O3"
         }
@@ -30,12 +55,18 @@ solution "VulkanDemo"
         objdir "../build/Demo/obj"
 
         files {
-            "../src/*.cc",
-            "../src/**.h"
+            "../src/**.cc",
+            "../src/**.h",
+            "../deps/**.h",
+            "../deps/**.hpp",
+            "../deps/**.cc",
+            "../deps/**.cpp",
         }
 
         includedirs {
-            "../src/include"
+            "../src/include/",
+            "../deps/vulkan/Include",
+            "../deps/glm/",
         }
 
         configuration "Debug"
@@ -43,4 +74,3 @@ solution "VulkanDemo"
 
         configuration "Release"
             targetdir "../bin/Demo/Release"
-
