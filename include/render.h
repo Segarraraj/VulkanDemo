@@ -3,6 +3,11 @@
 
 #include <Windows.h>
 
+#include <set>
+#include <vector>
+#include <string>
+#include <iostream>
+
 #define VK_USE_PLATFORM_WIN32_KHR
 #include "vulkan/vulkan.h"
 
@@ -27,10 +32,11 @@ public:
 private:
 	void createDebuger();
 	int createSurface(HWND window, HINSTANCE instance);
-	int createPhysicalDevice();
-	int createLogicalDevice();
+	int createPhysicalDevice(const std::vector<char*>& device_extensions);
+	int createLogicalDevice(const std::vector<char*>& device_extensions);
+	int createSwapChain(int width, int height);
 
-	bool isDeviceSuitable(const VkPhysicalDevice& device) const;
+	bool isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const;
 	QueueFamilyIndices findQueueFamilyIndices(const VkPhysicalDevice& device) const;
 
 	VkInstance _instance = VK_NULL_HANDLE;
@@ -39,6 +45,10 @@ private:
 	VkQueue _present_queue = VK_NULL_HANDLE;
 
 	VkSurfaceKHR _surface = VK_NULL_HANDLE;
+	VkSwapchainKHR _swap_chain = VK_NULL_HANDLE;
+	VkFormat _swapchain_format;
+	VkExtent2D _swapchain_extent;
+	std::vector<VkImage> _swapchain_images;
 
 	VkDevice _device = VK_NULL_HANDLE;
 	VkPhysicalDevice _physical_device = VK_NULL_HANDLE;

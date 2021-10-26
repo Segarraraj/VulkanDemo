@@ -39,7 +39,7 @@ int main(int argc, char** argv)
     0,
     "Main Class",
     "Vulkan Demo",
-    WS_OVERLAPPEDWINDOW,
+    (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX), // WS_OVERLAPEDWINDOW
     CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
     NULL,
     NULL,
