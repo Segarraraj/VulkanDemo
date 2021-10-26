@@ -56,7 +56,7 @@ solution "VulkanDemo"
 
         files {
             "../src/**.cc",
-            "../src/**.h",
+            "../include/**.h",
             "../deps/**.h",
             "../deps/**.hpp",
             "../deps/**.cc",
@@ -64,7 +64,7 @@ solution "VulkanDemo"
         }
 
         includedirs {
-            "../src/include/",
+            "../include",
             "../deps/vulkan/Include",
             "../deps/glm/",
         }

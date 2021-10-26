@@ -5,6 +5,21 @@
 
 #include "logger.h"
 
+static struct QueueFamilyIndices
+{
+  int32_t graphics_family = -1;
+
+  bool isValid() {
+    return graphics_family != -1;
+  }
+};
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+  VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+  VkDebugUtilsMessageTypeFlagsEXT messageType,
+  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+  void* pUserData);
+
 Render::Render() { }
 
 Render::~Render() {
@@ -19,32 +34,6 @@ Render::~Render() {
 #endif // DEBUG
 
   vkDestroyInstance(_instance, nullptr);
-}
-
-static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-  VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-  VkDebugUtilsMessageTypeFlagsEXT messageType,
-  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-  void* pUserData) {
-
-  switch (messageSeverity)
-  {
-  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: {
-    LOG_WARNING("VALIDATION LAYER", pCallbackData->pMessage);
-
-    break;
-  }
-  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: {
-    LOG_ERROR("VALIDATION LAYER", pCallbackData->pMessage);
-    break;
-  }
-  default: {
-    LOG_DEBUG("VALIDATION LAYER", pCallbackData->pMessage);
-    break;
-  }
-  }
-
-  return VK_FALSE;
 }
 
 int Render::init()
@@ -113,7 +102,49 @@ int Render::init()
     return 0;
   }
 
+  createDebuger();
+
+  if (!createPhysicalDevice()) {
+    return 0;
+  }
+
+  return 1;
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+  VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+  VkDebugUtilsMessageTypeFlagsEXT messageType,
+  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+  void* pUserData) {
+
+  switch (messageSeverity)
+  {
+  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: {
+    LOG_DEBUG("VALIDATION LAYER", pCallbackData->pMessage);
+    break;
+  }
+  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: {
+    LOG_WARNING("VALIDATION LAYER", pCallbackData->pMessage);
+    break;
+  }
+  case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: {
+    LOG_ERROR("VALIDATION LAYER", pCallbackData->pMessage);
+    break;
+  }
+  //default: {
+  //  LOG_DEBUG("VALIDATION LAYER", pCallbackData->pMessage);
+  //  break;
+  //}
+  }
+
+  return VK_FALSE;
+}
+
+void Render::createDebuger()
+{
 #if DEBUG
+  std::cout << "\n";
+  LOG_DEBUG("Render", "Creating debuger");
   VkDebugUtilsMessengerCreateInfoEXT debug_create_info = {};
   debug_create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
   debug_create_info.messageSeverity =
@@ -133,13 +164,86 @@ int Render::init()
 
   if (!vkCreateDebugUtilsMessengerEXT) {
     LOG_WARNING("Render", "Failed to set up debug messenger");
+    return;
   }
-  else
+   
+  VkResult result = vkCreateDebugUtilsMessengerEXT(_instance, &debug_create_info, nullptr, &_debug_messenger);
+  if (result != VK_SUCCESS)
   {
-    vkCreateDebugUtilsMessengerEXT(_instance, &debug_create_info, nullptr, &_debug_messenger);
+    LOG_WARNING("Render", "Failed to create debug messenger");
+    return;
   }
 
+  LOG_DEBUG("Render", "Debuger created succesfully");
 #endif // DEBUG
+}
+
+int Render::createPhysicalDevice()
+{
+  std::cout << "\n";
+  LOG_DEBUG("Render", "Creating physical device");
+
+  uint32_t count;
+  vkEnumeratePhysicalDevices(_instance, &count, nullptr);
+
+  if (count < 1)
+  {
+    LOG_ERROR("Render", "Failed to find GPUs with Vulkan support");
+    return 0;
+  }
+
+  std::vector<VkPhysicalDevice> devices(count);
+  vkEnumeratePhysicalDevices(_instance, &count, &(devices[0]));
+
+  for (int i = 0; i < devices.size() && _physical_device == VK_NULL_HANDLE; i++)
+  {
+    if (isDeviceSuitable(devices[i]))
+    {
+      _physical_device = devices[i];
+    }
+  }
+
+  if (_physical_device == VK_NULL_HANDLE)
+  {
+    LOG_ERROR("Render", "Failed to find any suitable GPU");
+    return 0;
+  }
 
   return 1;
+}
+
+bool Render::isDeviceSuitable(const VkPhysicalDevice& device) const
+{
+  VkPhysicalDeviceFeatures features;
+  VkPhysicalDeviceProperties properties;
+  vkGetPhysicalDeviceFeatures(device, &features);
+  vkGetPhysicalDeviceProperties(device, &properties);
+
+  if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+  {
+    return false;
+  }
+
+  uint32_t count;
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
+  std::vector<VkQueueFamilyProperties> queues(count);
+  vkGetPhysicalDeviceQueueFamilyProperties(device, &count, &(queues[0]));
+
+  QueueFamilyIndices indices = {};
+  for (int32_t i = 0; i < count && !indices.isValid(); i++)
+  {
+    if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+    {
+      indices.graphics_family = i;
+    }
+  }
+
+  if (!indices.isValid())
+  {
+    return 0;
+  }
+
+  LOG_DEBUG("Render", "Running on: %s", properties.deviceName);
+
+  return true;
 }
