@@ -1,5 +1,3 @@
-#include <Windows.h>
-
 #include "render.h"
 
 bool running = true;
@@ -23,7 +21,6 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 
 int main(int argc, char** argv)
 {
-
   HINSTANCE instance = GetModuleHandle(NULL);
   // Creating Windows window
   WNDCLASS window_class = {};
@@ -51,7 +48,7 @@ int main(int argc, char** argv)
   );
 
   Render render;
-  if (!render.init()) {
+  if (!render.init(window, instance)) {
     return 0;
   };
 

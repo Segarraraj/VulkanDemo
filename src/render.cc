@@ -26,10 +26,11 @@ Render::~Render() {
   }
 #endif // DEBUG
   vkDestroyDevice(_device, nullptr);
+  vkDestroySurfaceKHR(_instance, _surface, nullptr);
   vkDestroyInstance(_instance, nullptr);
 }
 
-int Render::init()
+int Render::init(HWND window, HINSTANCE instance)
 {
   LOG_DEBUG("Render", "Initializing Vulkan :)");
 
@@ -73,6 +74,7 @@ int Render::init()
   std::vector<char*> layers = std::vector<char*>();
 
   extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+  extensions.push_back("VK_KHR_win32_surface");
 
 #ifdef DEBUG
   layers.push_back("VK_LAYER_KHRONOS_validation");
@@ -96,6 +98,11 @@ int Render::init()
   }
 
   createDebuger();
+
+  if (!createSurface(window, instance))
+  {
+    return 0;
+  }
 
   if (!createPhysicalDevice()) {
     return 0;
@@ -175,6 +182,23 @@ void Render::createDebuger()
 #endif // DEBUG
 }
 
+int Render::createSurface(HWND window, HINSTANCE instance)
+{
+  VkWin32SurfaceCreateInfoKHR create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+  create_info.hwnd = window;
+  create_info.hinstance = instance;
+
+  VkResult result = vkCreateWin32SurfaceKHR(_instance, &create_info, nullptr, &_surface);
+  if (result != VK_SUCCESS)
+  {
+    LOG_ERROR("Render", "Failed to create window surface");
+    return 0;
+  }
+
+  return 1;
+}
+
 int Render::createLogicalDevice()
 {
   QueueFamilyIndices indices = findQueueFamilyIndices(_physical_device);
@@ -184,20 +208,27 @@ int Render::createLogicalDevice()
     return 0;
   }
 
-  float queue_priority = 1.0f;
-  VkDeviceQueueCreateInfo queue_create_info = {};
-  queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queue_create_info.queueCount = 1;
-  queue_create_info.pQueuePriorities = &queue_priority;
-  queue_create_info.queueFamilyIndex = indices.graphics_family;
+  std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
+  int32_t queues[] = { indices.graphics_family, indices.present_family };
+
+  for (size_t i = 0; i < sizeof(queues) / sizeof(int32_t); i++)
+  {
+    float queue_priority = 1.0f;
+    VkDeviceQueueCreateInfo queue_create_info = {};
+    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_info.queueCount = 1;
+    queue_create_info.pQueuePriorities = &queue_priority;
+    queue_create_info.queueFamilyIndex = queues[i];
+    queue_create_infos.push_back(queue_create_info);
+  }
 
   // Any mandatory feature is required
   VkPhysicalDeviceFeatures device_features = {};
 
   VkDeviceCreateInfo create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  create_info.queueCreateInfoCount = 1;
-  create_info.pQueueCreateInfos = &queue_create_info;
+  create_info.queueCreateInfoCount = (uint32_t) queue_create_infos.size();
+  create_info.pQueueCreateInfos = queue_create_infos.data();
   create_info.pEnabledFeatures = &device_features;
   create_info.enabledLayerCount = 0;
 
@@ -209,6 +240,7 @@ int Render::createLogicalDevice()
   }
 
   vkGetDeviceQueue(_device, indices.graphics_family, 0, &_graphics_queue);
+  vkGetDeviceQueue(_device, indices.present_family, 0, &_graphics_queue);
 
   return 1;
 }
@@ -282,6 +314,14 @@ QueueFamilyIndices Render::findQueueFamilyIndices(const VkPhysicalDevice& device
     if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
     {
       indices.graphics_family = i;
+    }
+
+    VkBool32 present_support = false;
+    vkGetPhysicalDeviceSurfaceSupportKHR(device, i, _surface, &present_support);
+
+    if (present_support)
+    {
+      indices.present_family = i;
     }
   }
 
