@@ -37,6 +37,7 @@ private:
 	int createSwapChain(int width, int height);
 	int createRenderPass();
 	int createGraphicsPipeline();
+	int createCommandBuffer();
 
 	bool isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const;
 	QueueFamilyIndices findQueueFamilyIndices(const VkPhysicalDevice& device) const;
@@ -47,12 +48,16 @@ private:
 	VkQueue _graphics_queue = VK_NULL_HANDLE;
 	VkQueue _present_queue = VK_NULL_HANDLE;
 
+	std::vector<VkCommandBuffer> _command_buffers;
+	VkCommandPool _command_pool = VK_NULL_HANDLE;
+
 	VkSurfaceKHR _surface = VK_NULL_HANDLE;
 	VkSwapchainKHR _swap_chain = VK_NULL_HANDLE;
 	VkFormat _swapchain_format;
 	VkExtent2D _swapchain_extent;
 	std::vector<VkImage> _swapchain_images;
 	std::vector<VkImageView> _swapchain_image_views;
+	std::vector<VkFramebuffer> _swapchain_framebuffers;
 
 	VkDevice _device = VK_NULL_HANDLE;
 	VkPhysicalDevice _physical_device = VK_NULL_HANDLE;

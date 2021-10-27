@@ -23,11 +23,17 @@ Render::~Render() {
     vkDestroyDebugUtilsMessengerEXT(_instance, _debug_messenger, nullptr);
   }
 #endif // DEBUG
-  for (uint32_t i = 0; i < _swapchain_image_views.size(); i++)
+  for (size_t i = 0; i < _swapchain_image_views.size(); i++)
   {
     vkDestroyImageView(_device, _swapchain_image_views[i], nullptr);
   }
 
+  for (size_t i = 0; i < _swapchain_framebuffers.size(); i++)
+  {
+    vkDestroyFramebuffer(_device, _swapchain_framebuffers[i], nullptr);
+  }
+
+  vkDestroyCommandPool(_device, _command_pool, nullptr);
   vkDestroyPipeline(_device, _graphics_pipeline, nullptr);
   vkDestroyPipelineLayout(_device, _pipeline_layout, nullptr);
   vkDestroyRenderPass(_device, _render_pass, nullptr);
@@ -136,6 +142,11 @@ int Render::init(HWND window, HINSTANCE instance)
   }
 
   if (!createGraphicsPipeline())
+  {
+    return 0;
+  }
+
+  if (!createCommandBuffer())
   {
     return 0;
   }
@@ -457,6 +468,25 @@ int Render::createRenderPass()
     return 0;
   }
 
+  _swapchain_framebuffers.resize(_swapchain_image_views.size());
+  for (size_t i = 0; i < _swapchain_image_views.size(); i++) {
+    VkFramebufferCreateInfo framebuffer_info{};
+    framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebuffer_info.renderPass = _render_pass;
+    framebuffer_info.attachmentCount = 1;
+    framebuffer_info.pAttachments = &(_swapchain_image_views[i]);
+    framebuffer_info.width = _swapchain_extent.width;
+    framebuffer_info.height = _swapchain_extent.height;
+    framebuffer_info.layers = 1;
+
+    result = vkCreateFramebuffer(_device, &framebuffer_info, nullptr, &_swapchain_framebuffers[i]);
+    if (result != VK_SUCCESS)
+    {
+      LOG_ERROR("Render", "Failed creating framebuffer");
+      return 0;
+    }
+  }
+
   LOG_DEBUG("Render", "Render pass created succesfully");
   return 1;
 }
@@ -585,6 +615,81 @@ int Render::createGraphicsPipeline()
   vkDestroyShaderModule(_device, fragment_shader_module, nullptr);
 
   LOG_DEBUG("Render", "Ghrapic pipeline created succesfully");
+  return 1;
+}
+
+int Render::createCommandBuffer()
+{
+  std::cout << "\n";
+  LOG_DEBUG("Render", "Creating command buffer");
+
+  QueueFamilyIndices indices = findQueueFamilyIndices(_physical_device);
+
+  VkCommandPoolCreateInfo pool_info = {};
+  pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  pool_info.queueFamilyIndex = indices.graphics_family;
+  pool_info.flags = 0;
+
+  VkResult result = vkCreateCommandPool(_device, &pool_info, nullptr, &_command_pool);
+  if (result != VK_SUCCESS)
+  {
+    LOG_ERROR("Render", "Failed creating command pool");
+    return 0;
+  }
+
+  _command_buffers.resize(_swapchain_framebuffers.size());
+
+  VkCommandBufferAllocateInfo allocate_info = {};
+  allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  allocate_info.commandPool = _command_pool;
+  allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  allocate_info.commandBufferCount = (uint32_t) _command_buffers.size();
+
+  result = vkAllocateCommandBuffers(_device, &allocate_info, _command_buffers.data());
+  if (result != VK_SUCCESS)
+  {
+    LOG_ERROR("Render", "Failed to allocate command buffers");
+    return 0;
+  }
+
+  for (size_t i = 0; i < _command_buffers.size(); i++)
+  {
+    VkCommandBufferBeginInfo begin_info = {};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+    result = vkBeginCommandBuffer(_command_buffers[i], &begin_info);
+    if (result != VK_SUCCESS)
+    {
+      LOG_ERROR("Render", "Failed to begin recording command buffer %d", i);
+      return 0;
+    }
+
+    VkClearValue clear_color = {{{ 0.06f, 0.06f, 0.06f, 1.0f }}};
+    VkRenderPassBeginInfo render_pass_info = {};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_info.renderPass = _render_pass;
+    render_pass_info.framebuffer = _swapchain_framebuffers[i];
+    render_pass_info.renderArea.offset = { 0, 0 };
+    render_pass_info.renderArea.extent = _swapchain_extent;
+    render_pass_info.clearValueCount = 1;
+    render_pass_info.pClearValues = &clear_color;
+
+    vkCmdBeginRenderPass(_command_buffers[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(_command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, _graphics_pipeline);
+    vkCmdDraw(_command_buffers[i], 3, 1, 0, 0);
+    vkCmdEndRenderPass(_command_buffers[i]);
+
+    result = vkEndCommandBuffer(_command_buffers[i]);
+    if (result != VK_SUCCESS)
+    {
+      LOG_ERROR("Render", "Failed to record command buffer");
+      return 0;
+    }
+  }
+
+
+
+  LOG_DEBUG("Render", "Command buffer created succesfully");
   return 1;
 }
 
