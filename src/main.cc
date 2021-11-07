@@ -7,6 +7,11 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
   LRESULT result = 0;
   switch (message)
   {
+  case WM_SIZE: {
+    Render* render = (Render*) GetWindowLongPtr(window, GWLP_USERDATA);
+    render->_resize = true;
+    break;
+  }
   case WM_CLOSE: {
     running = false;
     break;
@@ -39,7 +44,7 @@ int main(int argc, char** argv)
     0,
     "Main Class",
     "Vulkan Demo",
-    (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX), // WS_OVERLAPEDWINDOW
+    /*(WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX),*/ WS_OVERLAPPEDWINDOW,
     CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
     NULL,
     NULL,
@@ -52,6 +57,8 @@ int main(int argc, char** argv)
     return 0;
   };
 
+  SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR) &render);
+
   ShowWindow(window, 1);
 
   while (running)
@@ -62,7 +69,11 @@ int main(int argc, char** argv)
       TranslateMessage(&message);
       DispatchMessage(&message);
     }
+
+    render.drawFrame();
   }
+
+  vkDeviceWaitIdle(render._device);
 
   return 1;
 }

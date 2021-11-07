@@ -28,7 +28,10 @@ public:
 	~Render();
 
 	int init(HWND window, HINSTANCE instance);
+	void drawFrame();
 
+	bool _resize = false;
+	VkDevice _device = VK_NULL_HANDLE;
 private:
 	void createDebuger();
 	int createSurface(HWND window, HINSTANCE instance);
@@ -39,9 +42,12 @@ private:
 	int createGraphicsPipeline();
 	int createCommandBuffer();
 
+	int recreateSwapChain();
+
 	bool isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const;
 	QueueFamilyIndices findQueueFamilyIndices(const VkPhysicalDevice& device) const;
 	VkShaderModule createShaderModule(const std::vector<char>& code) const;
+	void cleanup();
 
 	VkInstance _instance = VK_NULL_HANDLE;
 	
@@ -52,21 +58,27 @@ private:
 	VkCommandPool _command_pool = VK_NULL_HANDLE;
 
 	VkSurfaceKHR _surface = VK_NULL_HANDLE;
-	VkSwapchainKHR _swap_chain = VK_NULL_HANDLE;
+	VkSwapchainKHR _swapchain = VK_NULL_HANDLE;
 	VkFormat _swapchain_format;
 	VkExtent2D _swapchain_extent;
 	std::vector<VkImage> _swapchain_images;
 	std::vector<VkImageView> _swapchain_image_views;
 	std::vector<VkFramebuffer> _swapchain_framebuffers;
 
-	VkDevice _device = VK_NULL_HANDLE;
 	VkPhysicalDevice _physical_device = VK_NULL_HANDLE;
 	
 	VkPipeline _graphics_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout _pipeline_layout = VK_NULL_HANDLE;
 	VkRenderPass _render_pass = VK_NULL_HANDLE;
 
+	std::vector<VkSemaphore> _image_ready_semaphores;
+	std::vector<VkSemaphore> _render_finished_semaphores;
+	std::vector<VkFence> _frame_fences;
+	std::vector<VkFence> _image_fences;
+
 	VkDebugUtilsMessengerEXT _debug_messenger = VK_NULL_HANDLE;
+
+	HWND _window;
 };
 
 #endif // !__RENDER_H__

@@ -5,6 +5,8 @@
 
 #include "glm/common.hpp"
 
+static const int MAX_FRAMES_IN_FLIGHT = 2;
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
   VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -14,6 +16,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 Render::Render() { }
 
 Render::~Render() {
+  cleanup();
+
 #ifdef DEBUG
   auto vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)
     vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT");
@@ -23,22 +27,16 @@ Render::~Render() {
     vkDestroyDebugUtilsMessengerEXT(_instance, _debug_messenger, nullptr);
   }
 #endif // DEBUG
-  for (size_t i = 0; i < _swapchain_image_views.size(); i++)
-  {
-    vkDestroyImageView(_device, _swapchain_image_views[i], nullptr);
-  }
 
-  for (size_t i = 0; i < _swapchain_framebuffers.size(); i++)
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
   {
-    vkDestroyFramebuffer(_device, _swapchain_framebuffers[i], nullptr);
+    vkDestroySemaphore(_device, _image_ready_semaphores[i], nullptr);
+    vkDestroySemaphore(_device, _render_finished_semaphores[i], nullptr);
+    vkDestroyFence(_device, _frame_fences[i], nullptr);
   }
 
   vkDestroyCommandPool(_device, _command_pool, nullptr);
-  vkDestroyPipeline(_device, _graphics_pipeline, nullptr);
-  vkDestroyPipelineLayout(_device, _pipeline_layout, nullptr);
-  vkDestroyRenderPass(_device, _render_pass, nullptr);
-
-  vkDestroySwapchainKHR(_device, _swap_chain, nullptr);
+  
   vkDestroyDevice(_device, nullptr);
   vkDestroySurfaceKHR(_instance, _surface, nullptr);
   vkDestroyInstance(_instance, nullptr);
@@ -46,6 +44,7 @@ Render::~Render() {
 
 int Render::init(HWND window, HINSTANCE instance)
 {
+  _window = window;
   LOG_DEBUG("Render", "Initializing Vulkan :)");
 
   // CREATING APP INFO
@@ -152,6 +151,80 @@ int Render::init(HWND window, HINSTANCE instance)
   }
 
   return 1;
+}
+
+void Render::drawFrame()
+{
+  static size_t frame = 0;
+  uint32_t image_index = 0;
+
+  vkWaitForFences(_device, 1, &_frame_fences[frame], VK_TRUE, UINT64_MAX);
+
+  VkResult result = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _image_ready_semaphores[frame], VK_NULL_HANDLE, &image_index);
+
+  if (result == VK_ERROR_OUT_OF_DATE_KHR)
+  {
+    recreateSwapChain();
+    return;
+  }
+  else if (result == VK_SUBOPTIMAL_KHR)
+  {
+    LOG_WARNING("Render", "Running with suboptimal swapchain");
+  }
+  else if (result != VK_SUCCESS)
+  {
+    LOG_ERROR("Render", "Failed to get image from swapchain");
+    return;
+  }
+
+  if (_image_fences[image_index] != VK_NULL_HANDLE)
+  {
+    vkWaitForFences(_device, 1, &_image_fences[image_index], VK_TRUE, UINT64_MAX);
+  } 
+
+  _image_fences[image_index] = _frame_fences[frame];
+
+  VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+  VkSubmitInfo submit_info = {};
+  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_info.waitSemaphoreCount = 1;
+  submit_info.pWaitSemaphores = &_image_ready_semaphores[frame];
+  submit_info.pWaitDstStageMask = wait_stages;
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &_command_buffers[image_index];
+  submit_info.signalSemaphoreCount = 1;
+  submit_info.pSignalSemaphores = &_render_finished_semaphores[frame];
+
+  vkResetFences(_device, 1, &_frame_fences[frame]);
+
+  result = vkQueueSubmit(_graphics_queue, 1, &submit_info, _frame_fences[frame]);
+  if (result != VK_SUCCESS)
+  {
+    LOG_ERROR("Render", "Failed submiting command buffer");
+    return;
+  }
+
+  VkPresentInfoKHR present_info = {};
+  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+  present_info.waitSemaphoreCount = 1;
+  present_info.pWaitSemaphores = &_render_finished_semaphores[frame];
+  present_info.swapchainCount = 1;
+  present_info.pSwapchains = &_swapchain;
+  present_info.pImageIndices = &image_index;
+  present_info.pResults = nullptr;
+
+  result = vkQueuePresentKHR(_present_queue, &present_info);
+
+  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || _resize) {
+    _resize = false;
+    recreateSwapChain();
+  }
+  else if (result != VK_SUCCESS) {
+    LOG_ERROR("Render", "Failed to present swapchain image");
+    return;
+  }
+
+  frame = (frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -286,7 +359,7 @@ int Render::createLogicalDevice(const std::vector<char*>& device_extensions)
   }
 
   vkGetDeviceQueue(_device, indices.graphics_family, 0, &_graphics_queue);
-  vkGetDeviceQueue(_device, indices.present_family, 0, &_graphics_queue);
+  vkGetDeviceQueue(_device, indices.present_family, 0, &_present_queue);
 
   LOG_DEBUG("Render", "Logical device created succesfully");
 
@@ -386,16 +459,16 @@ int Render::createSwapChain(int width, int height)
     create_info.pQueueFamilyIndices = nullptr;
   }
 
-  VkResult result = vkCreateSwapchainKHR(_device, &create_info, nullptr, &_swap_chain);
+  VkResult result = vkCreateSwapchainKHR(_device, &create_info, nullptr, &_swapchain);
   if (result != VK_SUCCESS)
   {
     LOG_ERROR("Render", "Failed to create SwapChain");
     return 0;
   }
 
-  vkGetSwapchainImagesKHR(_device, _swap_chain, &image_count, nullptr);
+  vkGetSwapchainImagesKHR(_device, _swapchain, &image_count, nullptr);
   _swapchain_images.resize(image_count);
-  vkGetSwapchainImagesKHR(_device, _swap_chain, &image_count, _swapchain_images.data());
+  vkGetSwapchainImagesKHR(_device, _swapchain, &image_count, _swapchain_images.data());
 
   _swapchain_extent = surface_extent;
   _swapchain_format = surface_format.format;
@@ -454,12 +527,22 @@ int Render::createRenderPass()
   subpass.colorAttachmentCount = 1;
   subpass.pColorAttachments = &color_attachment_ref;
 
+  VkSubpassDependency subpass_dependency = {};
+  subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+  subpass_dependency.dstSubpass = 0;
+  subpass_dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  subpass_dependency.srcAccessMask = 0;
+  subpass_dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
   VkRenderPassCreateInfo create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
   create_info.attachmentCount = 1;
   create_info.pAttachments = &color_attachment;
   create_info.subpassCount = 1;
   create_info.pSubpasses = &subpass;
+  create_info.dependencyCount = 1;
+  create_info.pDependencies = &subpass_dependency;
 
   VkResult result = vkCreateRenderPass(_device, &create_info, nullptr, &_render_pass);
   if (result != VK_SUCCESS)
@@ -570,8 +653,13 @@ int Render::createGraphicsPipeline()
   multisampler.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
   multisampler.sampleShadingEnable = VK_FALSE;
   multisampler.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+  multisampler.minSampleShading = 1.0f;
+  multisampler.pSampleMask = nullptr;
+  multisampler.alphaToCoverageEnable = VK_FALSE;
+  multisampler.alphaToOneEnable = VK_FALSE;
 
   VkPipelineColorBlendAttachmentState color_blend_attachment = {};
+  color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
   color_blend_attachment.blendEnable = VK_FALSE;
 
   VkPipelineColorBlendStateCreateInfo color_blending = {};
@@ -687,9 +775,65 @@ int Render::createCommandBuffer()
     }
   }
 
+  _image_ready_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+  _render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+  _frame_fences.resize(MAX_FRAMES_IN_FLIGHT);
+  _image_fences.resize(_swapchain_images.size(), VK_NULL_HANDLE);
 
+  VkSemaphoreCreateInfo semaphore_info = {};
+  semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+  VkFenceCreateInfo fence_info = {};
+  fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+  fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+  {
+    if (vkCreateSemaphore(_device, &semaphore_info, nullptr, &_image_ready_semaphores[i]) != VK_SUCCESS ||
+      vkCreateSemaphore(_device, &semaphore_info, nullptr, &_render_finished_semaphores[i]) != VK_SUCCESS ||
+      vkCreateFence(_device, &fence_info, nullptr, &_frame_fences[i]) != VK_SUCCESS)
+    {
+      LOG_ERROR("Render", "Failed creating semaphore");
+      return 0;
+    }
+  }
 
   LOG_DEBUG("Render", "Command buffer created succesfully");
+  return 1;
+}
+
+int Render::recreateSwapChain()
+{
+  std::cout << "\n";
+  LOG_DEBUG("Render", "Recreating swapchain");
+
+  vkDeviceWaitIdle(_device);
+
+  cleanup();
+
+  RECT rect;
+  GetClientRect(_window, &rect);
+  if (!createSwapChain(rect.right - rect.left, rect.bottom - rect.top))
+  {
+    return 0;
+  }
+
+  if (!createRenderPass())
+  {
+    return 0;
+  }
+
+  if (!createGraphicsPipeline())
+  {
+    return 0;
+  }
+
+  if (!createCommandBuffer())
+  {
+    return 0;
+  }
+
+  LOG_DEBUG("Render", "Swapchain recreated susccefully");
   return 1;
 }
 
@@ -811,4 +955,25 @@ VkShaderModule Render::createShaderModule(const std::vector<char>& code) const
   }
 
   return shader_module;
+}
+
+void Render::cleanup()
+{
+  for (size_t i = 0; i < _swapchain_image_views.size(); i++)
+  {
+    vkDestroyImageView(_device, _swapchain_image_views[i], nullptr);
+  }
+
+  for (size_t i = 0; i < _swapchain_framebuffers.size(); i++)
+  {
+    vkDestroyFramebuffer(_device, _swapchain_framebuffers[i], nullptr);
+  }
+
+  vkFreeCommandBuffers(_device, _command_pool, static_cast<uint32_t>(_command_buffers.size()), _command_buffers.data());
+
+  vkDestroyPipeline(_device, _graphics_pipeline, nullptr);
+  vkDestroyPipelineLayout(_device, _pipeline_layout, nullptr);
+  vkDestroyRenderPass(_device, _render_pass, nullptr);
+
+  vkDestroySwapchainKHR(_device, _swapchain, nullptr);
 }
