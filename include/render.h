@@ -40,10 +40,12 @@ private:
 	int createSwapChain(int width, int height);
 	int createRenderPass();
 	int createGraphicsPipeline();
+	int createVertexBuffers();
 	int createCommandBuffer();
 
 	int recreateSwapChain();
 
+	uint32_t findMemoryType(uint32_t filter, VkMemoryPropertyFlags properties);
 	bool isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const;
 	QueueFamilyIndices findQueueFamilyIndices(const VkPhysicalDevice& device) const;
 	VkShaderModule createShaderModule(const std::vector<char>& code) const;
@@ -75,6 +77,11 @@ private:
 	std::vector<VkSemaphore> _render_finished_semaphores;
 	std::vector<VkFence> _frame_fences;
 	std::vector<VkFence> _image_fences;
+
+	VkBuffer _positions_vertex_buffer;
+	VkBuffer _colors_vertex_buffer;
+	VkDeviceMemory _positions_buffer_memory;
+	VkDeviceMemory _colors_buffer_memory;
 
 	VkDebugUtilsMessengerEXT _debug_messenger = VK_NULL_HANDLE;
 

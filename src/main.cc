@@ -9,7 +9,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
   {
   case WM_SIZE: {
     Render* render = (Render*) GetWindowLongPtr(window, GWLP_USERDATA);
-    render->_resize = true;
+    //render->_resize = true;
     break;
   }
   case WM_CLOSE: {

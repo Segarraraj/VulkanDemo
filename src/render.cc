@@ -3,7 +3,7 @@
 #include "logger.h"
 #include "utils.h"
 
-#include "glm/common.hpp"
+#include "glm/glm.hpp"
 
 static const int MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -34,6 +34,11 @@ Render::~Render() {
     vkDestroySemaphore(_device, _render_finished_semaphores[i], nullptr);
     vkDestroyFence(_device, _frame_fences[i], nullptr);
   }
+
+  vkDestroyBuffer(_device, _positions_vertex_buffer, nullptr);
+  vkFreeMemory(_device, _positions_buffer_memory, nullptr);
+  vkDestroyBuffer(_device, _colors_vertex_buffer, nullptr);
+  vkFreeMemory(_device, _colors_buffer_memory, nullptr);
 
   vkDestroyCommandPool(_device, _command_pool, nullptr);
   
@@ -141,6 +146,11 @@ int Render::init(HWND window, HINSTANCE instance)
   }
 
   if (!createGraphicsPipeline())
+  {
+    return 0;
+  }
+
+  if (!createVertexBuffers())
   {
     return 0;
   }
@@ -605,12 +615,37 @@ int Render::createGraphicsPipeline()
 
   VkPipelineShaderStageCreateInfo shader_stages[] = { vertex_stage_create_info, fragment_stage_create_info };
 
+  VkVertexInputBindingDescription positions_binding_description = {};
+  positions_binding_description.binding = 0;
+  positions_binding_description.stride = sizeof(glm::vec2);
+  positions_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+  VkVertexInputBindingDescription colors_binding_description = {};
+  colors_binding_description.binding = 1;
+  colors_binding_description.stride = sizeof(glm::vec3);
+  colors_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+  VkVertexInputAttributeDescription positions_attribute_description = {};
+  positions_attribute_description.binding = 0;
+  positions_attribute_description.location = 0;
+  positions_attribute_description.offset = 0;
+  positions_attribute_description.format = VK_FORMAT_R32G32_SFLOAT;
+
+  VkVertexInputAttributeDescription colors_attribute_description = {};
+  colors_attribute_description.binding = 1;
+  colors_attribute_description.location = 1;
+  colors_attribute_description.offset = 0;
+  colors_attribute_description.format = VK_FORMAT_R32G32B32_SFLOAT;
+
+  VkVertexInputBindingDescription bindings[] = { positions_binding_description, colors_binding_description };
+  VkVertexInputAttributeDescription attributes[] = { positions_attribute_description, colors_attribute_description };
+
   VkPipelineVertexInputStateCreateInfo vertex_input_info{};
   vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-  vertex_input_info.vertexBindingDescriptionCount = 0;
-  vertex_input_info.pVertexBindingDescriptions = nullptr;
-  vertex_input_info.vertexAttributeDescriptionCount = 0;
-  vertex_input_info.pVertexAttributeDescriptions = nullptr;
+  vertex_input_info.vertexBindingDescriptionCount = sizeof(bindings) / sizeof(VkVertexInputBindingDescription);
+  vertex_input_info.pVertexBindingDescriptions = bindings;
+  vertex_input_info.vertexAttributeDescriptionCount = sizeof(attributes) / sizeof(VkVertexInputAttributeDescription);;
+  vertex_input_info.pVertexAttributeDescriptions = attributes;
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
   input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -706,6 +741,81 @@ int Render::createGraphicsPipeline()
   return 1;
 }
 
+int Render::createVertexBuffers()
+{
+  std::cout << "\n";
+  LOG_DEBUG("Render", "Creating vertex buffer");
+
+  void* vertex_data;
+  void* color_data;
+  const std::vector<glm::vec2> positions = {
+    {0.0f, -0.5f}, {0.5f, 0.5f}, {-0.5f, 0.5f}
+  };
+
+  const std::vector<glm::vec3> colors = {
+    {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}
+  };
+
+  VkBufferCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  create_info.size = sizeof(glm::vec2) * positions.size();
+  create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+  create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+  VkResult result = vkCreateBuffer(_device, &create_info, nullptr, &_positions_vertex_buffer);
+  if (result != VK_SUCCESS) 
+  {
+    LOG_ERROR("Render", "Failed creating vertex buffer");
+    return 0;
+  }
+
+  VkMemoryRequirements memory_requirements;
+  vkGetBufferMemoryRequirements(_device, _positions_vertex_buffer, &memory_requirements);
+
+  VkMemoryAllocateInfo allocate_info{};
+  allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  allocate_info.allocationSize = memory_requirements.size;
+  allocate_info.memoryTypeIndex = findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+  result = vkAllocateMemory(_device, &allocate_info, nullptr, &_positions_buffer_memory);
+  if (result != VK_SUCCESS) {
+    LOG_ERROR("Render", "Failed to allocate vertex buffer memory!");
+    return 0;
+  }
+
+  vkBindBufferMemory(_device, _positions_vertex_buffer, _positions_buffer_memory, 0);
+
+  vkMapMemory(_device, _positions_buffer_memory, 0, create_info.size, 0, &vertex_data);
+  memcpy(vertex_data, positions.data(), (size_t) create_info.size);
+  vkUnmapMemory(_device, _positions_buffer_memory);
+
+  create_info.size = sizeof(glm::vec3) * colors.size();
+  result = vkCreateBuffer(_device, &create_info, nullptr, &_colors_vertex_buffer);
+  if (result != VK_SUCCESS)
+  {
+    LOG_ERROR("Render", "Failed creating vertex buffer");
+    return 0;
+  }
+
+  vkGetBufferMemoryRequirements(_device, _colors_vertex_buffer, &memory_requirements);
+  allocate_info.allocationSize = memory_requirements.size;
+
+  result = vkAllocateMemory(_device, &allocate_info, nullptr, &_colors_buffer_memory);
+  if (result != VK_SUCCESS) {
+    LOG_ERROR("Render", "Failed to allocate vertex buffer memory!");
+    return 0;
+  }
+
+  vkBindBufferMemory(_device, _colors_vertex_buffer, _colors_buffer_memory, 0);
+
+  vkMapMemory(_device, _colors_buffer_memory, 0, create_info.size, 0, &color_data);
+  memcpy(color_data, colors.data(), (size_t) create_info.size);
+  vkUnmapMemory(_device, _colors_buffer_memory);
+
+  LOG_DEBUG("Render", "Vertex buffers created succesfully");
+  return 1;
+}
+
 int Render::createCommandBuffer()
 {
   std::cout << "\n";
@@ -764,6 +874,11 @@ int Render::createCommandBuffer()
 
     vkCmdBeginRenderPass(_command_buffers[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(_command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, _graphics_pipeline);
+
+    VkBuffer vertex_buffers[] = { _positions_vertex_buffer, _colors_vertex_buffer };
+    VkDeviceSize offsets[] = { 0, 0 };
+    vkCmdBindVertexBuffers(_command_buffers[i], 0, 2, vertex_buffers, offsets);
+
     vkCmdDraw(_command_buffers[i], 3, 1, 0, 0);
     vkCmdEndRenderPass(_command_buffers[i]);
 
@@ -869,6 +984,21 @@ int Render::createPhysicalDevice(const std::vector<char*>& device_extensions)
   }
 
   return 1;
+}
+
+uint32_t Render::findMemoryType(uint32_t filter, VkMemoryPropertyFlags properties)
+{
+  VkPhysicalDeviceMemoryProperties memory_properties;
+  vkGetPhysicalDeviceMemoryProperties(_physical_device, &memory_properties);
+
+  for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) {
+    if ((filter & (1 << i)) && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+      return i;
+    }
+  }
+
+  LOG_ERROR("Render", "Unable to fins right memory type");
+  return UINT32_MAX;
 }
 
 bool Render::isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const
