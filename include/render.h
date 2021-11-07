@@ -80,8 +80,10 @@ private:
 
 	VkBuffer _positions_vertex_buffer;
 	VkBuffer _colors_vertex_buffer;
+	VkBuffer _indices_buffer;
 	VkDeviceMemory _positions_buffer_memory;
 	VkDeviceMemory _colors_buffer_memory;
+	VkDeviceMemory _indices_buffer_memory;
 
 	VkDebugUtilsMessengerEXT _debug_messenger = VK_NULL_HANDLE;
 

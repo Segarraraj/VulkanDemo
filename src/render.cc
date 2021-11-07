@@ -39,6 +39,8 @@ Render::~Render() {
   vkFreeMemory(_device, _positions_buffer_memory, nullptr);
   vkDestroyBuffer(_device, _colors_vertex_buffer, nullptr);
   vkFreeMemory(_device, _colors_buffer_memory, nullptr);
+  vkDestroyBuffer(_device, _indices_buffer, nullptr);
+  vkFreeMemory(_device, _indices_buffer_memory, nullptr);
 
   vkDestroyCommandPool(_device, _command_pool, nullptr);
   
@@ -746,16 +748,21 @@ int Render::createVertexBuffers()
   std::cout << "\n";
   LOG_DEBUG("Render", "Creating vertex buffer");
 
-  void* vertex_data;
-  void* color_data;
+  void* buffer_memory;
   const std::vector<glm::vec2> positions = {
-    {0.0f, -0.5f}, {0.5f, 0.5f}, {-0.5f, 0.5f}
+    {-0.5f, -0.5f}, {0.5f, -0.5f}, {0.5f, 0.5f}, {-0.5f, 0.5f},
   };
 
   const std::vector<glm::vec3> colors = {
-    {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}
+    {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f, 1.0f},
   };
 
+  const std::vector<uint16_t> indices = {
+    0, 1, 2, 2, 3, 0
+  };
+
+  //////////////////
+  // POSITIONS
   VkBufferCreateInfo create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   create_info.size = sizeof(glm::vec2) * positions.size();
@@ -785,10 +792,12 @@ int Render::createVertexBuffers()
 
   vkBindBufferMemory(_device, _positions_vertex_buffer, _positions_buffer_memory, 0);
 
-  vkMapMemory(_device, _positions_buffer_memory, 0, create_info.size, 0, &vertex_data);
-  memcpy(vertex_data, positions.data(), (size_t) create_info.size);
+  vkMapMemory(_device, _positions_buffer_memory, 0, create_info.size, 0, &buffer_memory);
+  memcpy(buffer_memory, positions.data(), (size_t) create_info.size);
   vkUnmapMemory(_device, _positions_buffer_memory);
 
+  //////////////////
+  // COLORS
   create_info.size = sizeof(glm::vec3) * colors.size();
   result = vkCreateBuffer(_device, &create_info, nullptr, &_colors_vertex_buffer);
   if (result != VK_SUCCESS)
@@ -808,9 +817,35 @@ int Render::createVertexBuffers()
 
   vkBindBufferMemory(_device, _colors_vertex_buffer, _colors_buffer_memory, 0);
 
-  vkMapMemory(_device, _colors_buffer_memory, 0, create_info.size, 0, &color_data);
-  memcpy(color_data, colors.data(), (size_t) create_info.size);
+  vkMapMemory(_device, _colors_buffer_memory, 0, create_info.size, 0, &buffer_memory);
+  memcpy(buffer_memory, colors.data(), (size_t) create_info.size);
   vkUnmapMemory(_device, _colors_buffer_memory);
+
+  // --------------------------------
+  // INDICES
+  create_info.size = sizeof(uint16_t) * indices.size();
+  create_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+  result = vkCreateBuffer(_device, &create_info, nullptr, &_indices_buffer);
+  if (result != VK_SUCCESS)
+  {
+    LOG_ERROR("Render", "Failed creating indices buffer");
+    return 0;
+  }
+
+  vkGetBufferMemoryRequirements(_device, _indices_buffer, &memory_requirements);
+  allocate_info.allocationSize = memory_requirements.size;
+
+  result = vkAllocateMemory(_device, &allocate_info, nullptr, &_indices_buffer_memory);
+  if (result != VK_SUCCESS) {
+    LOG_ERROR("Render", "Failed to allocate indices buffer memory!");
+    return 0;
+  }
+
+  vkBindBufferMemory(_device, _indices_buffer, _indices_buffer_memory, 0);
+
+  vkMapMemory(_device, _indices_buffer_memory, 0, create_info.size, 0, &buffer_memory);
+  memcpy(buffer_memory, indices.data(), (size_t) create_info.size);
+  vkUnmapMemory(_device, _indices_buffer_memory);
 
   LOG_DEBUG("Render", "Vertex buffers created succesfully");
   return 1;
@@ -878,8 +913,10 @@ int Render::createCommandBuffer()
     VkBuffer vertex_buffers[] = { _positions_vertex_buffer, _colors_vertex_buffer };
     VkDeviceSize offsets[] = { 0, 0 };
     vkCmdBindVertexBuffers(_command_buffers[i], 0, 2, vertex_buffers, offsets);
+    vkCmdBindIndexBuffer(_command_buffers[i], _indices_buffer, 0, VK_INDEX_TYPE_UINT16);
 
-    vkCmdDraw(_command_buffers[i], 3, 1, 0, 0);
+    // HARDCODED INDEX COUNT
+    vkCmdDrawIndexed(_command_buffers[i], 6, 1, 0, 0, 0);
     vkCmdEndRenderPass(_command_buffers[i]);
 
     result = vkEndCommandBuffer(_command_buffers[i]);
