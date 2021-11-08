@@ -44,6 +44,7 @@ private:
 	int createCommandBuffer();
 
 	int recreateSwapChain();
+	void update();
 
 	uint32_t findMemoryType(uint32_t filter, VkMemoryPropertyFlags properties);
 	bool isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const;
@@ -58,6 +59,8 @@ private:
 
 	std::vector<VkCommandBuffer> _command_buffers;
 	VkCommandPool _command_pool = VK_NULL_HANDLE;
+	VkDescriptorPool _descriptor_pool = VK_NULL_HANDLE;
+	VkDescriptorSet _descriptor_set = VK_NULL_HANDLE;
 
 	VkSurfaceKHR _surface = VK_NULL_HANDLE;
 	VkSwapchainKHR _swapchain = VK_NULL_HANDLE;
@@ -71,6 +74,7 @@ private:
 	
 	VkPipeline _graphics_pipeline = VK_NULL_HANDLE;
 	VkPipelineLayout _pipeline_layout = VK_NULL_HANDLE;
+	VkDescriptorSetLayout _uniform_descriptor_layout = VK_NULL_HANDLE;
 	VkRenderPass _render_pass = VK_NULL_HANDLE;
 
 	std::vector<VkSemaphore> _image_ready_semaphores;
@@ -81,9 +85,11 @@ private:
 	VkBuffer _positions_vertex_buffer;
 	VkBuffer _colors_vertex_buffer;
 	VkBuffer _indices_buffer;
+	VkBuffer _uniform_buffer;
 	VkDeviceMemory _positions_buffer_memory;
 	VkDeviceMemory _colors_buffer_memory;
 	VkDeviceMemory _indices_buffer_memory;
+	VkDeviceMemory _uniform_buffer_memory;
 
 	VkDebugUtilsMessengerEXT _debug_messenger = VK_NULL_HANDLE;
 
