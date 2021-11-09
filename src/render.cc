@@ -138,10 +138,9 @@ int Render::init(HWND window, HINSTANCE instance)
     return 0;
   }
 
-  std::vector<char*> device_extensions = std::vector<char*>();
-  device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+  std::vector<char*> device_extensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
-  if (!createPhysicalDevice(device_extensions)) {
+  if (!pickPhysicalDevice(device_extensions)) {
     return 0;
   }
 
@@ -302,14 +301,17 @@ void Render::createDebuger()
   debug_create_info.pfnUserCallback = debugCallback;
   debug_create_info.pUserData = nullptr;
 
+  // Get extension funtion pointer
   auto vkCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)
     vkGetInstanceProcAddr(_instance, "vkCreateDebugUtilsMessengerEXT");
 
+  // check if it's valid
   if (!vkCreateDebugUtilsMessengerEXT) {
     LOG_WARNING("Render", "Failed to set up debug messenger");
     return;
   }
    
+  // Create the debug messenger
   VkResult result = vkCreateDebugUtilsMessengerEXT(_instance, &debug_create_info, nullptr, &_debug_messenger);
   if (result != VK_SUCCESS)
   {
@@ -345,28 +347,22 @@ int Render::createLogicalDevice(const std::vector<char*>& device_extensions)
 {
   std::cout << "\n";
   LOG_DEBUG("Render", "Creating logical device");
-  QueueFamilyIndices indices = findQueueFamilyIndices(_physical_device);
-
-  if (!indices.isValid())
-  {
-    return 0;
-  }
 
   std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
-  int32_t queues[] = { indices.graphics_family, indices.present_family };
+  int32_t queues[] = { _queue_indices.graphics_family, _queue_indices.present_family };
 
-  for (size_t i = 0; i < sizeof(queues) / sizeof(int32_t); i++)
+  for (size_t i = 0; i < sizeof(queues) / sizeof(queues[0]); i++)
   {
     float queue_priority = 1.0f;
     VkDeviceQueueCreateInfo queue_create_info = {};
     queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info.queueCount = 1;
+    queue_create_info.queueCount = 1; 
     queue_create_info.pQueuePriorities = &queue_priority;
     queue_create_info.queueFamilyIndex = queues[i];
     queue_create_infos.push_back(queue_create_info);
   }
 
-  // Any mandatory feature is required
+  // Any mandatory features required
   VkPhysicalDeviceFeatures device_features = {};
 
   VkDeviceCreateInfo create_info = {};
@@ -375,6 +371,7 @@ int Render::createLogicalDevice(const std::vector<char*>& device_extensions)
   create_info.pQueueCreateInfos = queue_create_infos.data();
   create_info.pEnabledFeatures = &device_features;
   create_info.enabledLayerCount = 0;
+  create_info.ppEnabledLayerNames = nullptr;
   create_info.enabledExtensionCount = device_extensions.size();
   create_info.ppEnabledExtensionNames = device_extensions.data();
 
@@ -385,8 +382,8 @@ int Render::createLogicalDevice(const std::vector<char*>& device_extensions)
     return 0;
   }
 
-  vkGetDeviceQueue(_device, indices.graphics_family, 0, &_graphics_queue);
-  vkGetDeviceQueue(_device, indices.present_family, 0, &_present_queue);
+  vkGetDeviceQueue(_device, _queue_indices.graphics_family, 0, &_graphics_queue);
+  vkGetDeviceQueue(_device, _queue_indices.present_family, 0, &_present_queue);
 
   LOG_DEBUG("Render", "Logical device created succesfully");
 
@@ -407,8 +404,8 @@ int Render::createSwapChain(int width, int height)
 
   uint32_t count;
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_physical_device, _surface, &capabilities);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(_physical_device, _surface, &count, nullptr);
 
+  vkGetPhysicalDeviceSurfaceFormatsKHR(_physical_device, _surface, &count, nullptr);
   if (count != 0) 
   {
     available_formats.resize(count);
@@ -470,13 +467,12 @@ int Render::createSwapChain(int width, int height)
   create_info.clipped = VK_TRUE;
   create_info.oldSwapchain = VK_NULL_HANDLE;
   
-  QueueFamilyIndices indices = findQueueFamilyIndices(_physical_device);
-  uint32_t queue_family_indices[] = { indices.graphics_family, indices.present_family };
-  if (indices.graphics_family != indices.present_family)
+  uint32_t queue_family_indices[] = { _queue_indices.graphics_family, _queue_indices.present_family };
+  if (_queue_indices.graphics_family != _queue_indices.present_family)
   {
     // VK_SHARING_MODE_EXCLUSIVE should be better for performance
     create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-    create_info.queueFamilyIndexCount = sizeof(queue_family_indices) / sizeof(uint32_t);
+    create_info.queueFamilyIndexCount = sizeof(queue_family_indices) / sizeof(queue_family_indices[0]);
     create_info.pQueueFamilyIndices = queue_family_indices;
   }
   else
@@ -961,11 +957,9 @@ int Render::createCommandBuffer()
   std::cout << "\n";
   LOG_DEBUG("Render", "Creating command buffer");
 
-  QueueFamilyIndices indices = findQueueFamilyIndices(_physical_device);
-
   VkCommandPoolCreateInfo pool_info = {};
   pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  pool_info.queueFamilyIndex = indices.graphics_family;
+  pool_info.queueFamilyIndex = _queue_indices.graphics_family;
   pool_info.flags = 0;
 
   VkResult result = vkCreateCommandPool(_device, &pool_info, nullptr, &_command_pool);
@@ -1115,12 +1109,15 @@ void Render::update()
   vkUnmapMemory(_device, _uniform_buffer_memory);
 }
 
-int Render::createPhysicalDevice(const std::vector<char*>& device_extensions)
+int Render::pickPhysicalDevice(const std::vector<char*>& device_extensions)
 {
   std::cout << "\n";
   LOG_DEBUG("Render", "Creating physical device");
 
   uint32_t count;
+  std::vector<VkPhysicalDevice> devices;
+  
+  // Query number of available devices
   vkEnumeratePhysicalDevices(_instance, &count, nullptr);
 
   if (count < 1)
@@ -1129,14 +1126,53 @@ int Render::createPhysicalDevice(const std::vector<char*>& device_extensions)
     return 0;
   }
 
-  std::vector<VkPhysicalDevice> devices(count);
+  // Query the "real"devices
+  devices.resize(count);
   vkEnumeratePhysicalDevices(_instance, &count, &(devices[0]));
 
-  for (int i = 0; i < devices.size() && _physical_device == VK_NULL_HANDLE; i++)
+  for (size_t i = 0; i < devices.size() && _physical_device == VK_NULL_HANDLE && !_queue_indices.isValid(); i++)
   {
-    if (isDeviceSuitable(devices[i], device_extensions))
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(devices[i], &properties);
+
+    // We just want dedicated GPUs
+    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
     {
-      _physical_device = devices[i];
+
+      uint32_t count;
+      QueueFamilyIndices indices = {};
+      std::vector<VkQueueFamilyProperties> queues;
+
+      // Query count of queue families
+      vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &count, nullptr);
+
+      // Query the queue family properties
+      queues.resize(count);
+      vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &count, &(queues[0]));
+
+      for (int32_t j = 0; j < count; j++)
+      {
+        // Check if the queue supports graphic commands
+        if (queues[j].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        {
+          indices.graphics_family = j;
+        }
+
+        VkBool32 present_support = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(devices[i], j, _surface, &present_support);
+
+        if (present_support)
+        {
+          indices.present_family = j;
+        }
+      }
+
+      if (indices.isValid())
+      {
+        _queue_indices = indices;
+        _physical_device = devices[i];
+        LOG_DEBUG("Render", "Running on: %s", properties.deviceName);
+      }
     }
   }
 
@@ -1162,74 +1198,6 @@ uint32_t Render::findMemoryType(uint32_t filter, VkMemoryPropertyFlags propertie
 
   LOG_ERROR("Render", "Unable to fins right memory type");
   return UINT32_MAX;
-}
-
-bool Render::isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const
-{
-  VkPhysicalDeviceFeatures features;
-  VkPhysicalDeviceProperties properties;
-  vkGetPhysicalDeviceFeatures(device, &features);
-  vkGetPhysicalDeviceProperties(device, &properties);
-
-  // We just want dedicated GPUs
-  if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-  {
-    return false;
-  }
-
-  // Check if the GPU supports our required queues
-  if (!findQueueFamilyIndices(device).isValid())
-  {
-    return false;
-  }
-
-  // Check for device extensions
-  uint32_t count;
-  vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
-  std::vector<VkExtensionProperties> available_extensions(count);
-  vkEnumerateDeviceExtensionProperties(device, nullptr, &count, available_extensions.data());
-
-  std::set<std::string> required_extensions(device_extensions.begin(), device_extensions.end());
-  for (const VkExtensionProperties& propertie : available_extensions)
-  {
-    required_extensions.erase(propertie.extensionName);
-  }
-
-  if (!required_extensions.empty())
-  {
-    return false;
-  }
-
-  LOG_DEBUG("Render", "Running on: %s", properties.deviceName);
-
-  return true;
-}
-
-QueueFamilyIndices Render::findQueueFamilyIndices(const VkPhysicalDevice& device) const
-{
-  QueueFamilyIndices indices = {};
-  uint32_t count;
-  vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
-  std::vector<VkQueueFamilyProperties> queues(count);
-  vkGetPhysicalDeviceQueueFamilyProperties(device, &count, &(queues[0]));
-
-  for (int32_t i = 0; i < count; i++)
-  {
-    if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-    {
-      indices.graphics_family = i;
-    }
-
-    VkBool32 present_support = false;
-    vkGetPhysicalDeviceSurfaceSupportKHR(device, i, _surface, &present_support);
-
-    if (present_support)
-    {
-      indices.present_family = i;
-    }
-  }
-
-  return indices;
 }
 
 VkShaderModule Render::createShaderModule(const std::vector<char>& code) const

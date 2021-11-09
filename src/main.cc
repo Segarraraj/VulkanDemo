@@ -7,11 +7,13 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
   LRESULT result = 0;
   switch (message)
   {
+  // WINDOW RESIZED
   case WM_SIZE: {
     Render* render = (Render*) GetWindowLongPtr(window, GWLP_USERDATA);
     //render->_resize = true;
     break;
   }
+  // WINDOW CLOSED
   case WM_CLOSE: {
     running = false;
     break;
@@ -26,13 +28,17 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 
 int main(int argc, char** argv)
 {
+  // For fully win32 inmersive experience see: WinMain.
+  // Since we are not using WinMain we have to get the instance by our own. 
   HINSTANCE instance = GetModuleHandle(NULL);
-  // Creating Windows window
+
   WNDCLASS window_class = {};
 
   window_class.hInstance = instance;
   window_class.lpfnWndProc = WindowProc;
   window_class.lpszClassName = "Main Class";
+
+  // Optional field
   window_class.hIcon = (HICON) LoadImage(
     instance, "../../data/icon.ico", 
     IMAGE_ICON, 32, 32, LR_LOADFROMFILE

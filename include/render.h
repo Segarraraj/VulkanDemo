@@ -35,7 +35,7 @@ public:
 private:
 	void createDebuger();
 	int createSurface(HWND window, HINSTANCE instance);
-	int createPhysicalDevice(const std::vector<char*>& device_extensions);
+	int pickPhysicalDevice(const std::vector<char*>& device_extensions);
 	int createLogicalDevice(const std::vector<char*>& device_extensions);
 	int createSwapChain(int width, int height);
 	int createRenderPass();
@@ -47,8 +47,6 @@ private:
 	void update();
 
 	uint32_t findMemoryType(uint32_t filter, VkMemoryPropertyFlags properties);
-	bool isDeviceSuitable(const VkPhysicalDevice& device, const std::vector<char*>& device_extensions) const;
-	QueueFamilyIndices findQueueFamilyIndices(const VkPhysicalDevice& device) const;
 	VkShaderModule createShaderModule(const std::vector<char>& code) const;
 	void cleanup();
 
@@ -92,6 +90,8 @@ private:
 	VkDeviceMemory _uniform_buffer_memory;
 
 	VkDebugUtilsMessengerEXT _debug_messenger = VK_NULL_HANDLE;
+
+	QueueFamilyIndices _queue_indices = {};
 
 	HWND _window;
 };
