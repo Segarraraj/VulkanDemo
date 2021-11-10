@@ -10,7 +10,7 @@ Dependencies:
 
 Usage:
 ---
-You can download the repo directly and build it by yourself by running the compile.bat script under scipts folder. Or you can download the [release](). Unfortunately this program will work just in Windows, and you will only be able to build the development environment on Windows.
+You can download the repo directly and build it by yourself by running the compile.bat script under scipts folder. Or you can download the [release](https://github.com/Segarraraj/VulkanDemo/releases/tag/1.0). Unfortunately this program will work just in Windows, and you will only be able to build the development environment on Windows.
 
 Final result:
 ---
@@ -18,3 +18,4 @@ Final result:
 
 License:
 ---
+This project is licensed under Creative Commons Zero v1.0 Universal license, see [LICENSE.md](LICENSE.md).
