@@ -75,10 +75,9 @@ private:
 	VkDescriptorSetLayout _uniform_descriptor_layout = VK_NULL_HANDLE;
 	VkRenderPass _render_pass = VK_NULL_HANDLE;
 
-	std::vector<VkSemaphore> _image_ready_semaphores;
-	std::vector<VkSemaphore> _render_finished_semaphores;
-	std::vector<VkFence> _frame_fences;
-	std::vector<VkFence> _image_fences;
+	VkSemaphore _image_ready_semaphore;
+	VkSemaphore _render_finished_semaphore;
+	VkFence _frame_fence;
 
 	VkBuffer _positions_vertex_buffer;
 	VkBuffer _colors_vertex_buffer;

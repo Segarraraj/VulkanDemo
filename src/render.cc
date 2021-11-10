@@ -14,8 +14,6 @@ static struct UniformBufferObject {
   glm::mat4 projection;
 };
 
-static const int MAX_FRAMES_IN_FLIGHT = 2;
-
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
   VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
   VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -37,12 +35,9 @@ Render::~Render() {
   }
 #endif // DEBUG
 
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-  {
-    vkDestroySemaphore(_device, _image_ready_semaphores[i], nullptr);
-    vkDestroySemaphore(_device, _render_finished_semaphores[i], nullptr);
-    vkDestroyFence(_device, _frame_fences[i], nullptr);
-  }
+ vkDestroySemaphore(_device, _image_ready_semaphore, nullptr);
+ vkDestroySemaphore(_device, _render_finished_semaphore, nullptr);
+ vkDestroyFence(_device, _frame_fence, nullptr);
 
   vkDestroyDescriptorSetLayout(_device, _uniform_descriptor_layout, nullptr);
 
@@ -180,12 +175,15 @@ int Render::init(HWND window, HINSTANCE instance)
 
 void Render::drawFrame()
 {
-  static size_t frame = 0;
+  vkWaitForFences(_device, 1, &_frame_fence, VK_TRUE, UINT64_MAX);
+  vkResetFences(_device, 1, &_frame_fence);
+
   uint32_t image_index = 0;
-
-  vkWaitForFences(_device, 1, &_frame_fences[frame], VK_TRUE, UINT64_MAX);
-
-  VkResult result = vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _image_ready_semaphores[frame], VK_NULL_HANDLE, &image_index);
+  VkResult result = vkAcquireNextImageKHR(
+    _device, _swapchain, 
+    UINT64_MAX, _image_ready_semaphore, 
+    VK_NULL_HANDLE, &image_index
+  );
 
   if (result == VK_ERROR_OUT_OF_DATE_KHR)
   {
@@ -202,29 +200,20 @@ void Render::drawFrame()
     return;
   }
 
-  if (_image_fences[image_index] != VK_NULL_HANDLE)
-  {
-    vkWaitForFences(_device, 1, &_image_fences[image_index], VK_TRUE, UINT64_MAX);
-  }
-
-  _image_fences[image_index] = _frame_fences[frame];
-
-  VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+  VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT };
   VkSubmitInfo submit_info = {};
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.waitSemaphoreCount = 1;
-  submit_info.pWaitSemaphores = &_image_ready_semaphores[frame];
+  submit_info.pWaitSemaphores = &_image_ready_semaphore;
   submit_info.pWaitDstStageMask = wait_stages;
   submit_info.commandBufferCount = 1;
   submit_info.pCommandBuffers = &_command_buffers[image_index];
   submit_info.signalSemaphoreCount = 1;
-  submit_info.pSignalSemaphores = &_render_finished_semaphores[frame];
-
-  vkResetFences(_device, 1, &_frame_fences[frame]);
+  submit_info.pSignalSemaphores = &_render_finished_semaphore;
 
   update();
 
-  result = vkQueueSubmit(_graphics_queue, 1, &submit_info, _frame_fences[frame]);
+  result = vkQueueSubmit(_graphics_queue, 1, &submit_info, _frame_fence);
   if (result != VK_SUCCESS)
   {
     LOG_ERROR("Render", "Failed submiting command buffer");
@@ -234,7 +223,7 @@ void Render::drawFrame()
   VkPresentInfoKHR present_info = {};
   present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   present_info.waitSemaphoreCount = 1;
-  present_info.pWaitSemaphores = &_render_finished_semaphores[frame];
+  present_info.pWaitSemaphores = &_render_finished_semaphore;
   present_info.swapchainCount = 1;
   present_info.pSwapchains = &_swapchain;
   present_info.pImageIndices = &image_index;
@@ -249,8 +238,6 @@ void Render::drawFrame()
     LOG_ERROR("Render", "Failed to present swapchain image");
     return;
   }
-
-  frame = (frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -550,22 +537,12 @@ int Render::createRenderPass()
   subpass.colorAttachmentCount = 1;
   subpass.pColorAttachments = &color_attachment_ref;
 
-  VkSubpassDependency subpass_dependency = {};
-  subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-  subpass_dependency.dstSubpass = 0;
-  subpass_dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-  subpass_dependency.srcAccessMask = 0;
-  subpass_dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-  subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
   VkRenderPassCreateInfo create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
   create_info.attachmentCount = 1;
   create_info.pAttachments = &color_attachment;
   create_info.subpassCount = 1;
   create_info.pSubpasses = &subpass;
-  create_info.dependencyCount = 1;
-  create_info.pDependencies = &subpass_dependency;
 
   VkResult result = vkCreateRenderPass(_device, &create_info, nullptr, &_render_pass);
   if (result != VK_SUCCESS)
@@ -1027,11 +1004,6 @@ int Render::createCommandBuffer()
     }
   }
 
-  _image_ready_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-  _render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-  _frame_fences.resize(MAX_FRAMES_IN_FLIGHT);
-  _image_fences.resize(_swapchain_images.size(), VK_NULL_HANDLE);
-
   VkSemaphoreCreateInfo semaphore_info = {};
   semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -1039,15 +1011,12 @@ int Render::createCommandBuffer()
   fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+  if (vkCreateSemaphore(_device, &semaphore_info, nullptr, &_image_ready_semaphore) != VK_SUCCESS ||
+      vkCreateSemaphore(_device, &semaphore_info, nullptr, &_render_finished_semaphore) != VK_SUCCESS ||
+      vkCreateFence(_device, &fence_info, nullptr, &_frame_fence) != VK_SUCCESS)
   {
-    if (vkCreateSemaphore(_device, &semaphore_info, nullptr, &_image_ready_semaphores[i]) != VK_SUCCESS ||
-      vkCreateSemaphore(_device, &semaphore_info, nullptr, &_render_finished_semaphores[i]) != VK_SUCCESS ||
-      vkCreateFence(_device, &fence_info, nullptr, &_frame_fences[i]) != VK_SUCCESS)
-    {
-      LOG_ERROR("Render", "Failed creating semaphore");
-      return 0;
-    }
+    LOG_ERROR("Render", "Failed creating semaphore");
+    return 0;
   }
 
   LOG_DEBUG("Render", "Command buffer created succesfully");
@@ -1220,7 +1189,7 @@ VkShaderModule Render::createShaderModule(const std::vector<char>& code) const
 
 void Render::cleanup()
 {
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+  for (size_t i = 0; i < _swapchain_image_views.size(); i++)
   {
     vkDestroyImageView(_device, _swapchain_image_views[i], nullptr);
     vkDestroyFramebuffer(_device, _swapchain_framebuffers[i], nullptr);
