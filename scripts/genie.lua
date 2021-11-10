@@ -74,3 +74,7 @@ solution "VulkanDemo"
 
         configuration "Release"
             targetdir "../bin/Demo/Release"
+
+        configuration "Shipping"
+            targetdir "../bin/Demo/Shipping"
+            kind "WindowedApp"

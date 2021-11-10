@@ -260,10 +260,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     LOG_ERROR("VALIDATION LAYER", pCallbackData->pMessage);
     break;
   }
-  //default: {
-  //  LOG_DEBUG("VALIDATION LAYER", pCallbackData->pMessage);
-  //  break;
-  //}
   }
 
   return VK_FALSE;
@@ -607,7 +603,7 @@ int Render::createGraphicsPipeline()
 
   VkVertexInputBindingDescription positions_binding_description = {};
   positions_binding_description.binding = 0;
-  positions_binding_description.stride = sizeof(glm::vec2);
+  positions_binding_description.stride = sizeof(glm::vec3);
   positions_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
   VkVertexInputBindingDescription colors_binding_description = {};
@@ -619,7 +615,7 @@ int Render::createGraphicsPipeline()
   positions_attribute_description.binding = 0;
   positions_attribute_description.location = 0;
   positions_attribute_description.offset = 0;
-  positions_attribute_description.format = VK_FORMAT_R32G32_SFLOAT;
+  positions_attribute_description.format = VK_FORMAT_R32G32B32_SFLOAT;
 
   VkVertexInputAttributeDescription colors_attribute_description = {};
   colors_attribute_description.binding = 1;
@@ -668,7 +664,7 @@ int Render::createGraphicsPipeline()
   rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
   rasterizer.lineWidth = 1.0f;
   rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-  rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+  rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
   rasterizer.depthBiasEnable = VK_FALSE;
   rasterizer.depthBiasConstantFactor = 0.0f;
   rasterizer.depthBiasClamp = 0.0f;
@@ -757,23 +753,42 @@ int Render::createVertexBuffers()
   LOG_DEBUG("Render", "Creating vertex buffer");
 
   void* buffer_memory;
-  const std::vector<glm::vec2> positions = {
-    {-0.5f, -0.5f}, {0.5f, -0.5f}, {0.5f, 0.5f}, {-0.5f, 0.5f},
+  glm::vec3 positions[] = {
+    {-0.5f, -0.5f, -0.5f}, 
+    { 0.5f, -0.5f, -0.5f}, 
+    { 0.5f,  0.5f, -0.5f}, 
+    {-0.5f,  0.5f, -0.5f},
+    {-0.5f, -0.5f,  0.5f},
+    { 0.5f, -0.5f,  0.5f},
+    { 0.5f,  0.5f,  0.5f},
+    {-0.5f,  0.5f,  0.5f},
   };
 
-  const std::vector<glm::vec3> colors = {
-    {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f, 1.0f},
+  glm::vec3 colors[] = {
+    {0.0f, 0.0f, 1.0f},
+    {1.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 1.0f},
+    {1.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 1.0f},
+    {1.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 1.0f},
+    {1.0f, 0.0f, 0.0f},
   };
 
-  const std::vector<uint16_t> indices = {
-    0, 1, 2, 2, 3, 0
+  uint16_t indices[] = {
+    0, 1, 3, 3, 1, 2,
+    1, 5, 2, 2, 5, 6,
+    5, 4, 6, 6, 4, 7,
+    4, 0, 7, 7, 0, 3,
+    3, 2, 7, 7, 2, 6,
+    4, 5, 0, 0, 5, 1
   };
 
   //////////////////
   // POSITIONS
   VkBufferCreateInfo create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  create_info.size = sizeof(glm::vec2) * positions.size();
+  create_info.size = sizeof(positions);
   create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
   create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -801,12 +816,12 @@ int Render::createVertexBuffers()
   vkBindBufferMemory(_device, _positions_vertex_buffer, _positions_buffer_memory, 0);
 
   vkMapMemory(_device, _positions_buffer_memory, 0, create_info.size, 0, &buffer_memory);
-  memcpy(buffer_memory, positions.data(), (size_t) create_info.size);
+  memcpy(buffer_memory, positions, (size_t) create_info.size);
   vkUnmapMemory(_device, _positions_buffer_memory);
 
   //////////////////
   // COLORS
-  create_info.size = sizeof(glm::vec3) * colors.size();
+  create_info.size = sizeof(colors);
   result = vkCreateBuffer(_device, &create_info, nullptr, &_colors_vertex_buffer);
   if (result != VK_SUCCESS)
   {
@@ -826,12 +841,12 @@ int Render::createVertexBuffers()
   vkBindBufferMemory(_device, _colors_vertex_buffer, _colors_buffer_memory, 0);
 
   vkMapMemory(_device, _colors_buffer_memory, 0, create_info.size, 0, &buffer_memory);
-  memcpy(buffer_memory, colors.data(), (size_t) create_info.size);
+  memcpy(buffer_memory, colors, (size_t) create_info.size);
   vkUnmapMemory(_device, _colors_buffer_memory);
 
   // --------------------------------
   // INDICES
-  create_info.size = sizeof(uint16_t) * indices.size();
+  create_info.size = sizeof(indices);
   create_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   result = vkCreateBuffer(_device, &create_info, nullptr, &_indices_buffer);
   if (result != VK_SUCCESS)
@@ -852,7 +867,7 @@ int Render::createVertexBuffers()
   vkBindBufferMemory(_device, _indices_buffer, _indices_buffer_memory, 0);
 
   vkMapMemory(_device, _indices_buffer_memory, 0, create_info.size, 0, &buffer_memory);
-  memcpy(buffer_memory, indices.data(), (size_t) create_info.size);
+  memcpy(buffer_memory, indices, (size_t) create_info.size);
   vkUnmapMemory(_device, _indices_buffer_memory);
   
   ////////////////////
@@ -993,7 +1008,7 @@ int Render::createCommandBuffer()
     vkCmdBindIndexBuffer(_command_buffers[i], _indices_buffer, 0, VK_INDEX_TYPE_UINT16);
 
     // HARDCODED INDEX COUNT
-    vkCmdDrawIndexed(_command_buffers[i], 6, 1, 0, 0, 0);
+    vkCmdDrawIndexed(_command_buffers[i], 36, 1, 0, 0, 0);
     vkCmdEndRenderPass(_command_buffers[i]);
 
     result = vkEndCommandBuffer(_command_buffers[i]);
